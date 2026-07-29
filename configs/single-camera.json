@@ -11,18 +11,15 @@
   ],
   "components": [
     {
-      "name": "cam",
+      "name": "rig",
       "api": "rdk:component:camera",
-      "model": "local:stereo-depth:camera",
+      "model": "webcam",
       "attributes": {
-        "stream_id": "cam",
         "video_path": "0",
+        "format": "MJPEG",
         "width_px": 2560,
         "height_px": 720,
-        "frame_rate": 30,
-        "focal_px": 700,
-        "baseline_mm": 60,
-        "rotate_180": false
+        "frame_rate": 30
       }
     },
     {
@@ -30,7 +27,7 @@
       "api": "rdk:component:camera",
       "model": "transform",
       "attributes": {
-        "source": "cam",
+        "source": "rig",
         "pipeline": [
           {
             "type": "crop",
@@ -50,7 +47,7 @@
       "api": "rdk:component:camera",
       "model": "transform",
       "attributes": {
-        "source": "cam",
+        "source": "rig",
         "pipeline": [
           {
             "type": "crop",
@@ -63,6 +60,16 @@
             }
           }
         ]
+      }
+    },
+    {
+      "name": "cam-depth",
+      "api": "rdk:component:camera",
+      "model": "local:stereo-depth:camera",
+      "attributes": {
+        "source": "rig",
+        "focal_px": 700,
+        "baseline_mm": 60
       }
     }
   ]

@@ -1,19 +1,33 @@
-"""Approximate depth and PCD generation for side-by-side stereo frames."""
+"""Stereo depth from a side-by-side (or left/right) RGB pair."""
+
+from __future__ import annotations
 
 import cv2
 import numpy as np
 
 
-def split_stereo(jpeg: bytes) -> tuple[np.ndarray, np.ndarray]:
+def decode_bgr(jpeg: bytes) -> np.ndarray:
     image = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
-    if image is None or image.shape[1] < 2:
-        raise ValueError("could not decode stereo frame")
+    if image is None:
+        raise ValueError("could not decode image")
+    return image
+
+
+def split_stereo(jpeg: bytes) -> tuple[np.ndarray, np.ndarray]:
+    image = decode_bgr(jpeg)
+    if image.shape[1] < 2:
+        raise ValueError("stereo frame too narrow to split")
     midpoint = image.shape[1] // 2
     return image[:, :midpoint], image[:, midpoint : midpoint * 2]
 
 
-def disparity_map(jpeg: bytes, max_eye_width: int = 640) -> tuple[np.ndarray, np.ndarray, float]:
-    left, right = split_stereo(jpeg)
+def disparity_map(
+    left: np.ndarray,
+    right: np.ndarray,
+    max_eye_width: int = 640,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    if left.shape[:2] != right.shape[:2]:
+        right = cv2.resize(right, (left.shape[1], left.shape[0]), interpolation=cv2.INTER_AREA)
     scale = min(1.0, max_eye_width / left.shape[1])
     if scale < 1.0:
         size = (round(left.shape[1] * scale), round(left.shape[0] * scale))
@@ -38,8 +52,8 @@ def disparity_map(jpeg: bytes, max_eye_width: int = 640) -> tuple[np.ndarray, np
     return left, disparity, scale
 
 
-def depth_preview(jpeg: bytes) -> bytes:
-    _left, disparity, _scale = disparity_map(jpeg)
+def depth_preview_bgr(left: np.ndarray, right: np.ndarray) -> bytes:
+    _left, disparity, _scale = disparity_map(left, right)
     valid = disparity > 0
     preview = np.zeros((*disparity.shape, 3), dtype=np.uint8)
     if np.any(valid):
@@ -53,23 +67,28 @@ def depth_preview(jpeg: bytes) -> bytes:
     return encoded.tobytes()
 
 
-def point_cloud_pcd(
-    jpeg: bytes,
+def depth_preview(jpeg: bytes) -> bytes:
+    left, right = split_stereo(jpeg)
+    return depth_preview_bgr(left, right)
+
+
+def point_cloud_pcd_bgr(
+    left: np.ndarray,
+    right: np.ndarray,
     *,
     focal_px: float,
     baseline_mm: float,
     stride: int = 4,
     max_depth_mm: float = 10_000,
 ) -> bytes:
-    _left, disparity, scale = disparity_map(jpeg)
+    _left, disparity, scale = disparity_map(left, right)
     focal = focal_px * scale
-    baseline = baseline_mm
     height, width = disparity.shape
     yy, xx = np.mgrid[0:height:stride, 0:width:stride]
     sampled = disparity[::stride, ::stride]
     valid = sampled > 0.5
     z = np.zeros_like(sampled, dtype=np.float32)
-    z[valid] = focal * baseline / sampled[valid]
+    z[valid] = focal * baseline_mm / sampled[valid]
     valid &= (z > 0) & (z <= max_depth_mm)
     z = z[valid]
     x = (xx[valid] - width / 2) * z / focal
@@ -84,3 +103,22 @@ def point_cloud_pcd(
     )
     body = "".join(f"{x:.3f} {y:.3f} {z:.3f}\n" for x, y, z in points)
     return (header + body).encode("ascii")
+
+
+def point_cloud_pcd(
+    jpeg: bytes,
+    *,
+    focal_px: float,
+    baseline_mm: float,
+    stride: int = 4,
+    max_depth_mm: float = 10_000,
+) -> bytes:
+    left, right = split_stereo(jpeg)
+    return point_cloud_pcd_bgr(
+        left,
+        right,
+        focal_px=focal_px,
+        baseline_mm=baseline_mm,
+        stride=stride,
+        max_depth_mm=max_depth_mm,
+    )

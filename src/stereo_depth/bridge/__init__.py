@@ -1,1 +1,1 @@
-"""Browser WebRTC to Viam camera bridge."""
+"""Depth-from-stereo Viam module."""

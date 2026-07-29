@@ -27,15 +27,14 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
 COPY bin ./bin
-RUN python -m pip install --no-cache-dir '.[bridge]' \
+RUN python -m pip install --no-cache-dir '.[module]' \
     && chmod 0755 /app/bin/run-module
 
 ENV APPIMAGE_EXTRACT_AND_RUN=1 \
-    VIAM_HOME=/var/lib/viam \
-    STEREO_DEPTH_WEBRTC=0
+    VIAM_HOME=/var/lib/viam
 
 VOLUME ["/var/lib/viam"]
-EXPOSE 8080 8081
+EXPOSE 8080
 
 ENTRYPOINT ["viam-server"]
 CMD ["-config", "/config/viam.json", "-no-tls"]

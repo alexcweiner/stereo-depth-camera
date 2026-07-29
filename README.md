@@ -1,66 +1,47 @@
 # stereo-depth-camera
 
-Viam module for one **GXIVISION** dual-lens USB camera (UVC, side-by-side MJPEG ~2560×720).
+Software stereo depth for a **GXIVISION** dual-lens USB camera on [Viam](https://www.viam.com).
 
-Opens the device with OpenCV, splits left/right, runs `StereoSGBM`, exposes color + depth preview + PCD on a normal Viam camera. Headless — no browser.
+Stock Viam opens the camera and crops the eyes. This module only estimates depth.
 
-## Hardware
-
-GXIVISION stereo USB module (and identical clones): one `/dev/video*` device, synchronized L|R in a single SBS frame, ~60 mm baseline.
-
-```sh
-# Linux / Pi
-v4l2-ctl --list-devices
-ls /dev/v4l/by-id/
-
-# macOS
-uv run python bin/list-cameras
-```
+| Component | Model | Role |
+|---|---|---|
+| `rig` | `webcam` | SBS UVC stream (~2560×720 MJPEG) |
+| `cam-left` / `cam-right` | `transform` | eye crops |
+| `cam-depth` | `local:stereo-depth:camera` | StereoSGBM → color + depth preview + PCD |
 
 ## Run
 
-1. Create a machine on [app.viam.com](https://app.viam.com).
-2. Paste [`configs/single-camera.json`](configs/single-camera.json); set `video_path` (`0` on Mac, `/dev/video0` or by-id on Pi).
-3. Save machine credentials as `local/viam.json`.
+1. Paste [`configs/single-camera.json`](configs/single-camera.json) into the machine config.
+2. Set `rig.attributes.video_path` (`0` on Mac, `/dev/video0` or by-id on Pi).
+3. Point `modules[].executable_path` at `bin/run-module` (Docker image already does).
+4. Save credentials as `local/viam.json`.
 
-**Pi / Linux (Docker):**
+**Pi / Linux**
 
 ```sh
-cp .env.example .env   # set CAMERA_DEVICE
+cp .env.example .env
 docker compose -f compose.yaml -f compose.linux.yaml up --build
 ```
 
-**macOS (native — Docker won't see the camera):**
+**macOS** — run `viam-server` natively; Docker won't see the camera. `uv sync --extra module` then set `executable_path` to this repo's `bin/run-module`.
 
-```sh
-uv sync --extra bridge
-# point modules[].executable_path at this repo's bin/run-module
-viam-server -config local/viam.json -no-tls
-```
+## Module attributes
 
-CONTROL tab: `cam` (SBS + depth), `cam-left` / `cam-right` (crops).
+| attr | |
+|---|---|
+| `source` | SBS webcam name (preferred for this board — one frame, synced eyes) |
+| `left_camera` + `right_camera` | alternative: two eye cameras |
+| `focal_px` / `baseline_mm` | PCD scale (defaults 700 / 60) |
 
-## Attributes
-
-| attr | default | |
-|---|---|---|
-| `video_path` | required | `0`, `/dev/video0`, or by-id |
-| `width_px` / `height_px` | 2560 / 720 | |
-| `frame_rate` | 30 | |
-| `baseline_mm` | 60 | |
-| `focal_px` | 700 | rough; for PCD scale |
-| `rotate_180` | false | |
-
-Depth is uncalibrated software stereo. Fine for near-field demos; not RealSense.
+Swap StereoSGBM later for an ML depth model in the same camera slot.
 
 ## Dev
 
 ```sh
-uv sync --extra bridge
+uv sync --extra module
 uv run python -m unittest discover -s tests -v
 ```
-
-Optional browser capture: [`configs/single-camera-webrtc.json`](configs/single-camera-webrtc.json) + `STEREO_DEPTH_WEBRTC=1`.
 
 ## License
 
