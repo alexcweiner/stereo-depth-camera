@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Checkerboard</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #111; color: #eee; font: 15px/1.4 system-ui, sans-serif; }
+    body.board-mode { background: #000; overflow: hidden; }
+    #setup {
+      max-width: 28rem;
+      margin: 0 auto;
+      padding: 1.25rem;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 .75rem; }
+    p { color: #aaa; margin: 0 0 1rem; }
+    label { display: grid; gap: .25rem; margin: 0 0 .75rem; }
+    input[type="number"] {
+      font: inherit;
+      padding: .55rem .65rem;
+      border: 1px solid #444;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #fff;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .check { display: flex; align-items: center; gap: .5rem; margin: .5rem 0 1rem; }
+    button {
+      font: inherit;
+      width: 100%;
+      padding: .85rem 1rem;
+      border: 0;
+      border-radius: 10px;
+      background: #2a6; color: #041;
+      font-weight: 600;
+    }
+    .hint { margin-top: 1rem; font-size: .9rem; color: #888; }
+    code { color: #cde; }
+    #board-wrap {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      align-items: center;
+      justify-content: center;
+    }
+    body.board-mode #setup { display: none; }
+    body.board-mode #board-wrap { display: flex; }
+    #board {
+      display: grid;
+      flex: none;
+      background: #fff;
+      /* size set in JS so squares are equal */
+    }
+    #board i {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+    }
+    #board i.black { background: #000; }
+    #overlay {
+      position: fixed;
+      left: .5rem;
+      bottom: .5rem;
+      padding: .35rem .55rem;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      font-size: .75rem;
+      border-radius: 6px;
+      pointer-events: none;
+    }
+    #exit {
+      position: fixed;
+      top: .5rem;
+      right: .5rem;
+      width: auto;
+      padding: .45rem .7rem;
+      background: rgba(40,40,40,.75);
+      color: #fff;
+      font-weight: 500;
+      z-index: 2;
+    }
+  </style>
+</head>
+<body>
+  <main id="setup">
+    <h1>Calibration checkerboard</h1>
+    <p>Same Wi‑Fi as the laptop. Open this page on a phone/tablet, set the board, go fullscreen, then measure one square with a ruler (mm).</p>
+
+    <div class="row">
+      <label>Squares across
+        <input id="cols" type="number" min="3" max="30" value="9">
+      </label>
+      <label>Squares down
+        <input id="rows" type="number" min="3" max="30" value="6">
+      </label>
+    </div>
+    <label>Square size label (mm) — measure after display; fix if wrong
+      <input id="squareMm" type="number" min="1" step="0.1" value="25">
+    </label>
+    <label class="check"><input id="invert" type="checkbox"> Start with black in the top-left</label>
+    <button id="show" type="button">Show board</button>
+    <p class="hint">OpenCV wants <strong>inner corners</strong>: <code id="corners">8×5</code>. Keep the screen bright; both camera eyes must see the whole board.</p>
+  </main>
+
+  <div id="board-wrap" aria-label="Checkerboard">
+    <button id="exit" type="button">Exit</button>
+    <div id="board"></div>
+    <div id="overlay"></div>
+  </div>
+
+  <script>
+    const colsEl = document.querySelector("#cols");
+    const rowsEl = document.querySelector("#rows");
+    const mmEl = document.querySelector("#squareMm");
+    const invertEl = document.querySelector("#invert");
+    const cornersEl = document.querySelector("#corners");
+    const board = document.querySelector("#board");
+    const overlay = document.querySelector("#overlay");
+
+    function updateCorners() {
+      const c = Math.max(2, Number(colsEl.value) || 9);
+      const r = Math.max(2, Number(rowsEl.value) || 6);
+      cornersEl.textContent = `${c - 1}×${r - 1}`;
+    }
+    colsEl.addEventListener("input", updateCorners);
+    rowsEl.addEventListener("input", updateCorners);
+    updateCorners();
+
+    function buildBoard() {
+      const cols = Math.max(3, Math.min(30, Number(colsEl.value) || 9));
+      const rows = Math.max(3, Math.min(30, Number(rowsEl.value) || 6));
+      const mm = Number(mmEl.value) || 25;
+      const invert = invertEl.checked;
+      colsEl.value = cols;
+      rowsEl.value = rows;
+
+      const maxW = window.innerWidth;
+      const maxH = window.innerHeight;
+      const side = Math.floor(Math.min(maxW / cols, maxH / rows));
+      board.style.gridTemplateColumns = `repeat(${cols}, ${side}px)`;
+      board.style.gridTemplateRows = `repeat(${rows}, ${side}px)`;
+      board.style.width = `${side * cols}px`;
+      board.style.height = `${side * rows}px`;
+      board.replaceChildren();
+      for (let y = 0; y < rows; y += 1) {
+        for (let x = 0; x < cols; x += 1) {
+          const cell = document.createElement("i");
+          const black = ((x + y) % 2 === 0) === invert;
+          if (black) cell.className = "black";
+          board.append(cell);
+        }
+      }
+      overlay.textContent = `${cols}×${rows} squares · inner corners ${cols - 1}×${rows - 1} · label ${mm} mm/square · measure to confirm`;
+      updateCorners();
+    }
+
+    async function enterBoard() {
+      buildBoard();
+      document.body.classList.add("board-mode");
+      try {
+        if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        } else if (document.documentElement.webkitRequestFullscreen) {
+          await document.documentElement.webkitRequestFullscreen();
+        }
+      } catch (_) {
+        /* iOS often blocks fullscreen; board-mode still works */
+      }
+      screen.orientation?.lock?.("landscape").catch(() => {});
+    }
+
+    async function exitBoard() {
+      document.body.classList.remove("board-mode");
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        try {
+          await (document.exitFullscreen?.() || document.webkitExitFullscreen?.());
+        } catch (_) {}
+      }
+    }
+
+    document.querySelector("#show").addEventListener("click", enterBoard);
+    document.querySelector("#exit").addEventListener("click", exitBoard);
+    window.addEventListener("resize", () => {
+      if (document.body.classList.contains("board-mode")) buildBoard();
+    });
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") exitBoard();
+    });
+  </script>
+</body>
+</html>

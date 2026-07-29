@@ -36,6 +36,33 @@ docker compose -f compose.yaml -f compose.linux.yaml up --build
 
 Swap StereoSGBM later for an ML depth model in the same camera slot.
 
+## Calibration
+
+Unrectified 180° eyes make StereoSGBM noisy. You need **intrinsics** (each eye) and **extrinsics** (left↔right). Viam can capture frames; the solve is local OpenCV (`cv2.fisheye`).
+
+Most people have an old tablet and no printer. Run a checkerboard server on the
+laptop; open the URL on the phone/tablet (same Wi‑Fi):
+
+```sh
+uv run python -m stereo_depth.checkerboard
+# phone: http://<laptop-lan-ip>:8765/
+```
+
+Set squares across/down, go fullscreen, keep it **close**, move it around a lot
+so corners reach the outer FOV. Measure one square in **mm** with a ruler after
+it’s displayed (don’t trust the on-screen label alone).
+
+**Capture (both eyes must see the whole board every frame)**
+
+| | Target |
+|---|---|
+| Pairs | **25–40** good detections (shoot ~50; throw away misses) |
+| Distance | mostly **0.3–1.0 m**; a few at **~1.5–2 m** |
+| Coverage | center, edges, corners; tilt ±30–45°; roll a bit |
+| Per pair | one SBS / left+right grab — same instant |
+
+Workflow: intrinsics per eye from that set → stereo extrinsics on the same pairs → `stereoRectify` maps → load into `cam-depth` before matching. Without that, treat depth as a rough near-field demo only.
+
 ## Dev
 
 ```sh

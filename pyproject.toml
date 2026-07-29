@@ -25,6 +25,10 @@ module = [
 ]
 
 [project.scripts]
+stereo-depth-checkerboard = "stereo_depth.checkerboard.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+stereo_depth = ["checkerboard/*.html"]
