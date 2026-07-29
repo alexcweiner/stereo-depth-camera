@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stereo-depth"
+version = "0.1.0"
+description = "Turn a dual-lens USB stereo webcam into a Viam depth camera"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "stereo-depth contributors" }]
+keywords = ["viam", "stereo", "depth", "opencv", "webrtc", "robotics"]
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = []
+
+[project.optional-dependencies]
+bridge = [
+  "aiohttp>=3.10,<4",
+  "aiortc>=1.9,<2",
+  "opencv-python-headless>=4.10,<4.14",
+  "Pillow>=10,<13",
+  "viam-sdk>=0.40,<1",
+]
+
+[project.scripts]
+stereo-depth-web = "stereo_depth.bridge.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+stereo_depth = ["web/*"]
