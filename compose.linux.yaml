@@ -1,0 +1,11 @@
+# Linux / Raspberry Pi USB passthrough for headless capture.
+# Prefer a stable by-id path in .env, e.g.:
+#   CAMERA_DEVICE=/dev/v4l/by-id/usb-GXIVISION_...-video-index0
+services:
+  viam-server:
+    devices:
+      - "${CAMERA_DEVICE:-/dev/video0}:${CAMERA_DEVICE:-/dev/video0}"
+    group_add:
+      - video
+    environment:
+      STEREO_DEPTH_WEBRTC: "0"

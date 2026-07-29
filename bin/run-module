@@ -1,2 +1,11 @@
 #!/bin/sh
+set -eu
+ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+if command -v uv >/dev/null 2>&1; then
+  exec uv run --extra bridge python -m stereo_depth.bridge.main "$@"
+fi
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  exec "$ROOT/.venv/bin/python" -m stereo_depth.bridge.main "$@"
+fi
 exec python -m stereo_depth.bridge.main "$@"

@@ -6,7 +6,10 @@
     {
       "name": "stereo-depth",
       "type": "local",
-      "executable_path": "/app/bin/run-module"
+      "executable_path": "/app/bin/run-module",
+      "env": {
+        "STEREO_DEPTH_WEBRTC": "1"
+      }
     }
   ],
   "components": [
@@ -16,13 +19,8 @@
       "model": "local:stereo-depth:camera",
       "attributes": {
         "stream_id": "cam",
-        "video_path": "0",
-        "width_px": 2560,
-        "height_px": 720,
-        "frame_rate": 30,
         "focal_px": 700,
-        "baseline_mm": 60,
-        "rotate_180": false
+        "baseline_mm": 60
       }
     },
     {

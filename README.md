@@ -2,7 +2,7 @@
 
 Turn a ~$40–90 dual-lens USB module into a Viam camera that serves **color, a depth preview, and a point cloud** — no RealSense, no Orbbec SDK, no proprietary driver.
 
-These GXIVISION-style boards show up as a normal UVC webcam. One frame is **side-by-side stereo** (left | right). This project splits the eyes, runs OpenCV stereo matching, and exposes the result as a standard Viam camera component.
+**Default mode is headless USB capture** (works on a Mac or Raspberry Pi with no browser). Optional WebRTC/browser capture remains available when you want it.
 
 <p align="center">
   <img src="docs/assets/hero.jpg" alt="Side-by-side stereo frame and software depth preview" width="900" />
@@ -16,7 +16,7 @@ These GXIVISION-style boards show up as a normal UVC webcam. One frame is **side
 
 Hardware depth cameras are great when you need them — and expensive, power-hungry, or awkward when you don’t. Dual-lens USB modules already ship synchronized stereo in one MJPEG stream. What’s missing is a small, boring bridge into a robot stack.
 
-This repo is that bridge for [Viam](https://www.viam.com): plug in the camera, open Chrome, stream, and you get `GetImages` + `GetPointCloud` like any other depth camera.
+This repo is that bridge for [Viam](https://www.viam.com): plug in the camera, start the module, and you get `GetImages` + `GetPointCloud` like any other depth camera.
 
 ## What you get
 
@@ -29,12 +29,10 @@ This repo is that bridge for [Viam](https://www.viam.com): plug in the camera, o
 USB dual-lens module
         │  side-by-side MJPEG (e.g. 2560×720)
         ▼
-   Chrome (WebRTC)  ──►  Python module  ──►  viam-server
-                              │
-                     StereoSGBM depth + PCD
+ OpenCV capture (headless)  ──►  Python module  ──►  viam-server
+        │                              │
+   optional Chrome WebRTC      StereoSGBM depth + PCD
 ```
-
-WebRTC is intentional: on macOS especially, browser camera access is more reliable than fighting host permissions for every process.
 
 ## Hardware
 
@@ -44,33 +42,84 @@ Any UVC dual-lens module that outputs a **side-by-side** frame works. Tested pat
 - ~60 mm baseline (many boards are adjustable)
 - Wide / fisheye lenses are common — depth is approximate until you calibrate
 
-Search terms that find them: `dual lens USB camera 2560x720`, `3D stereo USB module synchronized`.
+Search terms: `dual lens USB camera 2560x720`, `3D stereo USB module synchronized`.
 
-## Quick start
+### Find the camera path
+
+**Raspberry Pi / Linux**
+
+```sh
+v4l2-ctl --list-devices
+ls /dev/v4l/by-id/
+v4l2-ctl --list-formats-ext --device /dev/video0
+```
+
+Prefer a stable `/dev/v4l/by-id/...` path in config.
+
+**macOS**
+
+```sh
+uv run python bin/list-cameras
+system_profiler SPCameraDataType
+```
+
+OpenCV usually wants a numeric index (`0`, `1`, …). Grant **Camera** permission to Terminal (or whatever runs the module) under System Settings → Privacy & Security → Camera.
+
+## Quick start (headless)
 
 ### 1. Viam machine
 
 1. Create a machine at [app.viam.com](https://app.viam.com).
-2. **CONFIGURE → JSON** → paste [`configs/single-camera.json`](configs/single-camera.json) → save.
-3. Download the private machine credentials and save as `local/viam.json` (gitignored).
+2. **CONFIGURE → JSON** → paste [`configs/single-camera.json`](configs/single-camera.json).
+3. Set `attributes.video_path` to your device (`0` on Mac, or `/dev/video0` / by-id on Pi).
+4. Save. Download private credentials to `local/viam.json` (gitignored).
 
-### 2. Run
+### 2a. Raspberry Pi / Linux (Docker + USB passthrough)
 
 ```sh
-docker compose up --build
+cp .env.example .env   # set CAMERA_DEVICE if needed
+docker compose -f compose.yaml -f compose.linux.yaml up --build
 ```
 
-### 3. Stream from the browser
+No browser. The module opens the USB camera itself.
 
-1. Open [http://localhost:8081](http://localhost:8081) in Chrome.
-2. **Enable camera access** → pick the stereo module.
-3. Optional: **Rotate 180°** if the mount is upside down.
-4. **Start streaming** and leave the tab open.
+### 2b. macOS (native — recommended for headless)
 
-### 4. Check it
+Docker Desktop cannot reliably pass Mac cameras through. Run locally:
 
-- Viam **CONTROL** tab → `cam`, then `cam-left` / `cam-right`
-- Bridge heartbeat: [http://localhost:8081/api/status](http://localhost:8081/api/status)
+```sh
+# install viam-server once (from the machine setup page / brew tap)
+uv sync --extra bridge
+
+# point Viam at this module: executable_path =
+#   /ABS/PATH/TO/stereo-depth-camera/bin/run-module
+# and ensure that script's python can import stereo_depth (uv run / venv).
+
+viam-server -config local/viam.json -no-tls
+```
+
+For a local module path without Docker, change the machine config module block to something like:
+
+```json
+"modules": [{
+  "name": "stereo-depth",
+  "type": "local",
+  "executable_path": "/Users/YOU/Projects/stereo-depth-camera/bin/run-module"
+}]
+```
+
+`bin/run-module` already prefers `uv run` / `.venv` when present.
+### 3. Verify
+
+In the machine **CONTROL** tab, open `cam`, then `cam-left` / `cam-right`. Depth + PCD come from `cam`.
+
+## Optional: browser WebRTC capture
+
+Use this if USB open fails on macOS permissions, or you prefer Chrome as the capture process.
+
+1. Paste [`configs/single-camera-webrtc.json`](configs/single-camera-webrtc.json) (sets `STEREO_DEPTH_WEBRTC=1`).
+2. `docker compose up --build` (or run the module with that env var).
+3. Open [http://localhost:8081](http://localhost:8081), enable the camera, **Start streaming**, leave the tab open.
 
 ## Try the depth math without a camera
 
@@ -79,60 +128,42 @@ uv sync --extra bridge
 uv run python -m unittest discover -s tests -v
 ```
 
-The unit tests synthesize a stereo pair and assert a valid PCD + JPEG depth preview.
-
-## How depth is computed
-
-1. Decode the latest side-by-side JPEG from the WebRTC frame store.
-2. Split left/right halves.
-3. Downscale and run `cv2.StereoSGBM`.
-4. Publish a turbo colormap as a second named image (`cam-depth`).
-5. Reproject disparities with configurable `focal_px` and `baseline_mm` into ASCII PCD.
-
-This is **software stereo**, not a time-of-flight or structured-light sensor. Expect useful near-field obstacle cues around roughly 2–4 m; farther out gets noisy, especially with wide fisheye lenses and no calibration.
-
-### Module attributes
+## Module attributes (`local:stereo-depth:camera`)
 
 | Attribute | Default | Meaning |
 |---|---|---|
-| `stream_id` | required | Must match the browser stream (`cam`) |
+| `video_path` | — | Headless USB source: `0`, `/dev/video0`, or by-id path |
+| `stream_id` | camera name | Frame store key (also used by WebRTC) |
+| `width_px` / `height_px` | `2560` / `720` | Requested capture size |
+| `frame_rate` | `30` | Requested FPS |
+| `rotate_180` | `false` | Rotate frames if the mount is upside down |
 | `focal_px` | `700` | Approximate focal length for PCD |
 | `baseline_mm` | `60` | Stereo baseline in millimeters |
 
-## Local development (no Docker UI)
+Set **either** `video_path` (headless) **or** omit it and use WebRTC with `stream_id`.
 
-```sh
-uv sync --extra bridge
-uv run --extra bridge stereo-depth-web   # http://localhost:8081
-```
+Env:
 
-Static UI only (no WebRTC to Viam):
+| Variable | Default | Meaning |
+|---|---|---|
+| `STEREO_DEPTH_WEBRTC` | `0` | `1` enables the browser UI on port 8081 |
 
-```sh
-uv run python -m http.server 8081 --bind 127.0.0.1 \
-  --directory src/stereo_depth/web
-```
+## How depth is computed
 
-## Project layout
+1. Grab the latest side-by-side JPEG (USB or WebRTC).
+2. Split left/right halves.
+3. Downscale and run `cv2.StereoSGBM`.
+4. Publish a turbo colormap as `cam-depth`.
+5. Reproject disparities with `focal_px` / `baseline_mm` into ASCII PCD.
 
-```text
-src/stereo_depth/
-  bridge/          # Viam module + WebRTC server + stereo math
-  web/             # Single-camera setup UI
-configs/           # Paste-ready Viam machine JSON
-docs/assets/       # Demo images
-```
+This is **software stereo**, not ToF / structured light. Near-field (~2–4 m) is the useful range; wide fisheyes without calibration get noisy farther out.
 
 ## Honest limitations
 
-- No fisheye rectification yet — disparity quality depends on roughly aligned eyes.
-- Depth preview is a colormap JPEG, not a raw depth MIME type.
-- Browser must stay open while streaming (WebRTC ingress).
-- Not a replacement for calibrated industrial stereo or RealSense accuracy.
-
-## Related
-
-Built as a single-module slice of a larger multi-camera 360 stereo experiment. One camera first; ring fusion later if you need it.
+- No fisheye rectification yet.
+- Depth preview is a colormap JPEG, not a raw depth MIME.
+- Docker on macOS is a poor fit for USB cameras — use native headless or WebRTC.
+- Not a replacement for calibrated industrial stereo.
 
 ## License
 

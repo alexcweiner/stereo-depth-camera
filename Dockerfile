@@ -5,7 +5,13 @@ ARG TARGETARCH
 ARG VIAM_CHANNEL=stable
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y ca-certificates curl libfuse2 \
+    && apt-get install --no-install-recommends -y \
+         ca-certificates \
+         curl \
+         libfuse2 \
+         libglib2.0-0 \
+         libgl1 \
+         v4l-utils \
     && rm -rf /var/lib/apt/lists/* \
     && case "$TARGETARCH" in \
          amd64) viam_arch=x86_64 ;; \
@@ -25,7 +31,8 @@ RUN python -m pip install --no-cache-dir '.[bridge]' \
     && chmod 0755 /app/bin/run-module
 
 ENV APPIMAGE_EXTRACT_AND_RUN=1 \
-    VIAM_HOME=/var/lib/viam
+    VIAM_HOME=/var/lib/viam \
+    STEREO_DEPTH_WEBRTC=0
 
 VOLUME ["/var/lib/viam"]
 EXPOSE 8080 8081
